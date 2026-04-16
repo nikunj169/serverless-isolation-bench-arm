@@ -98,6 +98,19 @@ log "  Architecture: $ARCH"
 # ─────────────────────────────────────────────────────────────────────────────
 log "Step 1: Setting up Python virtual environment …"
 
+RECREATE_VENV=0
+if [[ -x "$VENV_DIR/bin/python" ]]; then
+    EXISTING_VENV_VERSION=$("$VENV_DIR/bin/python" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    if [[ "$EXISTING_VENV_VERSION" != "$PY_VERSION" ]]; then
+        warn "Existing $VENV_DIR uses Python $EXISTING_VENV_VERSION, expected $PY_VERSION. Recreating it to avoid interpreter/tooling conflicts."
+        RECREATE_VENV=1
+    fi
+fi
+
+if [[ "$RECREATE_VENV" -eq 1 ]] && [[ -d "$VENV_DIR" ]]; then
+    rm -rf "$VENV_DIR"
+fi
+
 if [[ ! -d "$VENV_DIR" ]]; then
     "$PYTHON_BIN" -m venv "$VENV_DIR"
     log "  Created venv at $VENV_DIR"
@@ -108,6 +121,11 @@ fi
 # Activate
 # shellcheck disable=SC1090
 source "$VENV_DIR/bin/activate"
+
+if ! python -m pip --version >/dev/null 2>&1; then
+    warn "pip is missing inside $VENV_DIR; bootstrapping it with ensurepip."
+    python -m ensurepip --upgrade
+fi
 
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
