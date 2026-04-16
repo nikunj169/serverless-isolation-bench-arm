@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# requirements.txt — pinned dependencies for the benchmark framework.
+# All versions tested on Python 3.10 / Apple Silicon (ARM64).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Web framework for the FaaS function
+fastapi==0.111.0
+
+# ASGI server used to serve the FastAPI app in both modes
+uvicorn[standard]==0.29.0
+
+# HTTP client used by the benchmark harness
+requests==2.32.2
+
+# Process memory measurement (process mode)
+psutil==5.9.8
+
+# Keep the analysis stack on the NumPy 1.x line for broad wheel availability
+# and to avoid unrelated incompatibilities in mixed local Python environments.
+numpy<2.0
+
+# Statistical analysis for p-values and confidence intervals
+scipy==1.13.0

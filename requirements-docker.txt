@@ -1,0 +1,6 @@
+# requirements-docker.txt
+# Dependencies for the container image ONLY.
+# psutil is NOT included — it is only needed on the host for memory tracking,
+# not inside the container running app.py.
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
