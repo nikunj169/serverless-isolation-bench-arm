@@ -9,8 +9,12 @@
 #
 # Build:
 #   docker build --platform linux/arm64 -t serverless-bench:latest .
-# Run:
+# Run (default SHA256 workload):
 #   docker run --rm -p 8000:8000 serverless-bench:latest
+# Run other workloads:
+#   docker run --rm -p 8000:8000 -e WORKLOAD=json serverless-bench:latest
+#   docker run --rm -p 8000:8000 -e WORKLOAD=matrix -e MATRIX_SIZE=512 serverless-bench:latest
+#   docker run --rm -p 8000:8000 -e WORKLOAD=ml serverless-bench:latest
 # ─────────────────────────────────────────────────────────────────────────────
 
 FROM python:3.10-slim
@@ -26,6 +30,10 @@ COPY requirements-docker.txt .
 RUN pip install --no-cache-dir -r requirements-docker.txt
 
 COPY app.py .
+COPY workloads/ workloads/
+COPY train_model.py .
+
+RUN python train_model.py
 
 EXPOSE 8000
 

@@ -6,6 +6,7 @@ All Docker operations use subprocess so we don't need the Docker SDK,
 keeping the dependency list minimal.
 """
 
+import os
 import subprocess
 import time
 import requests
@@ -79,8 +80,14 @@ class DockerRunner:
             "--platform", "linux/arm64",               # enforce ARM64 — no emulation
             "--name", self.container_name,
             "-p", f"{self.host_port}:{self.container_port}",
-            FULL_IMAGE,
         ]
+
+        for env_name in ("WORKLOAD", "MATRIX_SIZE", "MODEL_PATH"):
+            env_value = os.environ.get(env_name)
+            if env_value:
+                cmd.extend(["-e", f"{env_name}={env_value}"])
+
+        cmd.append(FULL_IMAGE)
 
         subprocess.run(cmd, check=True, capture_output=True)
         self._wait_for_ready()

@@ -1,0 +1,48 @@
+{
+  "experiment": {
+    "workload": "matrix",
+    "matrix_size": 256,
+    "model_type": null,
+    "timestamp": "2026-06-11T09:03:03Z",
+    "payload_sizes_kb": [
+      1,
+      10,
+      100,
+      1024
+    ]
+  },
+  "runs": [
+    {
+      "workload": "matrix",
+      "payload_size_kb": 1,
+      "payload_size": "1KB",
+      "matrix_size": 256,
+      "model_type": null,
+      "timestamp": "2026-06-11T09:03:03Z"
+    },
+    {
+      "workload": "matrix",
+      "payload_size_kb": 10,
+      "payload_size": "10KB",
+      "matrix_size": 256,
+      "model_type": null,
+      "timestamp": "2026-06-11T09:03:03Z"
+    },
+    {
+      "workload": "matrix",
+      "payload_size_kb": 100,
+      "payload_size": "100KB",
+      "matrix_size": 256,
+      "model_type": null,
+      "timestamp": "2026-06-11T09:03:03Z"
+    },
+    {
+      "workload": "matrix",
+      "payload_size_kb": 1024,
+      "payload_size": "1MB",
+      "matrix_size": 256,
+      "model_type": null,
+      "timestamp": "2026-06-11T09:03:03Z"
+    }
+  ]
+}

@@ -3,15 +3,19 @@ analyze.py — Post-benchmark analysis and paper-ready summary tables.
 
 Reads:
   - results/benchmark_results.csv
-  - results/throughput_results.csv
+  - results/throughput_results.csv  (only rows where total_requests == 1000)
   - results/memory_*.csv
 
-Prints markdown tables with:
-  - Mean latency, stddev, p95
-  - 95% confidence intervals for mean latency
+Prints markdown-formatted tables with:
+  - Mean latency, std, p95, 95% CI
   - Welch's t-test p-values (process vs. container)
-  - Concurrent throughput and throughput Isolation Delta
-  - Memory mean/peak and memory Isolation Delta
+  - Latency Isolation Delta (container / process)
+  - Concurrent throughput and throughput Isolation Delta (process / container)
+  - Separate process/container memory metrics with instrumentation warning
+
+Usage:
+  python analyze.py
+  python analyze.py --results path/to/benchmark_results.csv
 """
 
 import argparse
@@ -26,7 +30,10 @@ from scipy import stats
 RESULTS_DIR = Path(__file__).parent / "results"
 DEFAULT_RESULTS = RESULTS_DIR / "benchmark_results.csv"
 DEFAULT_THROUGHPUT_RESULTS = RESULTS_DIR / "throughput_results.csv"
-HOST_VM_CORRECTION_FACTOR_MB = 1536.0
+
+# Only accept throughput rows with exactly this many total requests.
+# Filters out stale N=10/50/100 rows from earlier benchmark versions.
+VALID_THROUGHPUT_N = 1000
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -35,49 +42,53 @@ HOST_VM_CORRECTION_FACTOR_MB = 1536.0
 
 
 def load_csv(path: Path) -> list[dict]:
-    """Load a CSV file into a list of row dicts."""
     if not path.exists():
         raise FileNotFoundError(f"Results file not found: {path}")
-    with open(path, newline="") as handle:
-        return list(csv.DictReader(handle))
-
-
-def load_results(path: Path) -> list[dict]:
-    return load_csv(path)
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def load_throughput_results(path: Path) -> list[dict]:
+    """
+    Load throughput CSV and filter to VALID_THROUGHPUT_N rows only.
+    Earlier benchmark versions wrote N=10/50/100 rows via append mode.
+    Those rows are invalid for throughput analysis and must be excluded.
+    """
     if not path.exists():
         return []
-    return load_csv(path)
+    rows = load_csv(path)
+    valid = [r for r in rows if int(r["total_requests"]) == VALID_THROUGHPUT_N]
+    skipped = len(rows) - len(valid)
+    if skipped:
+        print(
+            f"  [analyze] Skipped {skipped} stale throughput rows "
+            f"(total_requests != {VALID_THROUGHPUT_N})"
+        )
+    return valid
 
 
-def group_latencies(rows: list[dict]) -> dict[tuple[str, int, str], list[float]]:
-    groups: dict[tuple[str, int, str], list[float]] = defaultdict(list)
+def group_latencies(rows: list[dict]) -> dict:
+    groups = defaultdict(list)
     for row in rows:
         key = (row["mode"], int(row["payload_size_kb"]), row["request_type"])
         groups[key].append(float(row["latency_ms"]))
     return dict(groups)
 
 
-def group_throughput(rows: list[dict]) -> dict[tuple[str, int, int], list[dict]]:
-    groups: dict[tuple[str, int, int], list[dict]] = defaultdict(list)
+def group_throughput(rows: list[dict]) -> dict:
+    groups = defaultdict(list)
     for row in rows:
-        key = (
-            row["mode"],
-            int(row["payload_size_kb"]),
-            int(row["concurrency_level"]),
-        )
+        key = (row["mode"], int(row["payload_size_kb"]), int(row["concurrency_level"]))
         groups[key].append(row)
     return dict(groups)
 
 
 def latest_memory_files() -> dict[str, Path]:
-    latest: dict[str, Path] = {}
+    latest = {}
     for mode in ("process", "container"):
         candidates = sorted(
             RESULTS_DIR.glob(f"memory_{mode}*.csv"),
-            key=lambda path: path.stat().st_mtime,
+            key=lambda p: p.stat().st_mtime,
         )
         if candidates:
             latest[mode] = candidates[-1]
@@ -85,10 +96,10 @@ def latest_memory_files() -> dict[str, Path]:
 
 
 def load_memory_groups() -> dict[str, list[float]]:
-    groups: dict[str, list[float]] = {}
+    groups = {}
     for mode, path in latest_memory_files().items():
         rows = load_csv(path)
-        groups[mode] = [float(row["memory_mb"]) for row in rows if row.get("memory_mb")]
+        groups[mode] = [float(r["memory_mb"]) for r in rows if r.get("memory_mb")]
     return groups
 
 
@@ -105,30 +116,29 @@ def percentile(sorted_values: list[float], p: float) -> float:
 
 
 def mean_confidence_interval(values: list[float], confidence: float = 0.95) -> tuple[float, float]:
-    """Return the lower/upper CI bounds for the mean using Student's t."""
-    if not values:
-        return (0.0, 0.0)
-    if len(values) == 1:
-        return (values[0], values[0])
-    mean_value = statistics.mean(values)
+    """95% CI for the mean using Student's t-distribution."""
+    if len(values) < 2:
+        v = values[0] if values else 0.0
+        return (v, v)
+    mean_val = statistics.mean(values)
     sem = stats.sem(values)
-    interval = stats.t.interval(confidence, df=len(values) - 1, loc=mean_value, scale=sem)
+    interval = stats.t.interval(confidence, df=len(values) - 1, loc=mean_val, scale=sem)
     return (float(interval[0]), float(interval[1]))
 
 
 def compute_stats(values: list[float]) -> dict:
     if not values:
         return {}
-    sorted_values = sorted(values)
-    ci_low, ci_high = mean_confidence_interval(sorted_values)
+    sv = sorted(values)
+    ci_low, ci_high = mean_confidence_interval(sv)
     return {
-        "n": len(sorted_values),
-        "mean_ms": statistics.mean(sorted_values),
-        "median_ms": statistics.median(sorted_values),
-        "std_ms": statistics.stdev(sorted_values) if len(sorted_values) > 1 else 0.0,
-        "p95_ms": percentile(sorted_values, 0.95),
-        "min_ms": sorted_values[0],
-        "max_ms": sorted_values[-1],
+        "n": len(sv),
+        "mean_ms": statistics.mean(sv),
+        "median_ms": statistics.median(sv),
+        "std_ms": statistics.stdev(sv) if len(sv) > 1 else 0.0,
+        "p95_ms": percentile(sv, 0.95),
+        "min_ms": sv[0],
+        "max_ms": sv[-1],
         "ci_low_ms": ci_low,
         "ci_high_ms": ci_high,
     }
@@ -148,203 +158,165 @@ def compute_memory_stats(values: list[float]) -> dict:
     }
 
 
-def welch_p_value(process_values: list[float], container_values: list[float]) -> float | None:
-    if len(process_values) < 2 or len(container_values) < 2:
+def welch_p_value(process_vals: list[float], container_vals: list[float]) -> float | None:
+    if len(process_vals) < 2 or len(container_vals) < 2:
         return None
-    test_result = stats.ttest_ind(process_values, container_values, equal_var=False)
-    if math.isnan(test_result.pvalue):
-        return None
-    return float(test_result.pvalue)
+    result = stats.ttest_ind(process_vals, container_vals, equal_var=False)
+    return None if math.isnan(result.pvalue) else float(result.pvalue)
 
 
-def isolation_delta(numerator: float, denominator: float) -> float | None:
-    if denominator == 0:
-        return None
-    return numerator / denominator
+# ─────────────────────────────────────────────────────────────────────────────
+# Formatters
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-def fmt_float(value: float | None, digits: int = 2) -> str:
-    if value is None:
+def fmt_p(p: float | None) -> str:
+    if p is None:
         return "N/A"
-    return f"{value:.{digits}f}"
-
-
-def fmt_ci(low: float, high: float, digits: int = 2, unit: str = "") -> str:
-    return f"[{low:.{digits}f}, {high:.{digits}f}]{unit}"
-
-
-def fmt_p_value(value: float | None) -> str:
-    if value is None:
-        return "N/A"
-    if value < 0.001:
+    if p < 0.001:
         return "<0.001"
-    return f"{value:.4f}"
+    return f"{p:.4f}"
 
 
-def fmt_ratio(value: float | None) -> str:
-    if value is None:
+def fmt_ci(low: float, high: float) -> str:
+    return f"[{low:.2f}, {high:.2f}]"
+
+
+def fmt_ratio(num: float, den: float) -> str:
+    if den == 0:
         return "N/A"
-    return f"{value:.2f}x"
+    return f"{num / den:.2f}×"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Markdown rendering
+# Markdown table printers
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def print_markdown_heading(title: str) -> None:
-    print(f"\n## {title}")
-
-
-def print_latency_tables(groups: dict[tuple[str, int, str], list[float]]) -> None:
-    print_markdown_heading("Latency Summary")
+def print_latency_tables(groups: dict) -> None:
+    print("\n## Latency Summary\n")
     print(
-        "| Payload (KB) | Request Type | Process Mean (ms) | Process 95% CI | "
-        "Container Mean (ms) | Container 95% CI | p95 Process | p95 Container | "
-        "Welch p-value | Latency ID (Container/Process) |"
+        "| Payload | Type | Process Mean (ms) | Process 95% CI | "
+        "Container Mean (ms) | Container 95% CI | "
+        "P95 Process | P95 Container | Welch p | Latency ID |"
     )
     print("|---:|---|---:|---|---:|---|---:|---:|---:|---:|")
 
-    payload_sizes = sorted({payload_kb for (_, payload_kb, _) in groups})
-    for request_type in ("cold_start", "warm"):
-        for payload_kb in payload_sizes:
-            process_values = groups.get(("process", payload_kb, request_type), [])
-            container_values = groups.get(("container", payload_kb, request_type), [])
-            if not process_values or not container_values:
+    payload_sizes = sorted({kb for (_, kb, _) in groups})
+    for rt in ("cold_start", "warm"):
+        for kb in payload_sizes:
+            pv = groups.get(("process", kb, rt), [])
+            cv = groups.get(("container", kb, rt), [])
+            if not pv or not cv:
                 continue
-
-            process_stats = compute_stats(process_values)
-            container_stats = compute_stats(container_values)
-            p_value = welch_p_value(process_values, container_values)
-            latency_id = isolation_delta(
-                container_stats["mean_ms"],
-                process_stats["mean_ms"],
-            )
-
+            ps = compute_stats(pv)
+            cs = compute_stats(cv)
+            p = welch_p_value(pv, cv)
             print(
-                f"| {payload_kb} | {request_type} | "
-                f"{process_stats['mean_ms']:.2f} | "
-                f"{fmt_ci(process_stats['ci_low_ms'], process_stats['ci_high_ms'])} | "
-                f"{container_stats['mean_ms']:.2f} | "
-                f"{fmt_ci(container_stats['ci_low_ms'], container_stats['ci_high_ms'])} | "
-                f"{process_stats['p95_ms']:.2f} | "
-                f"{container_stats['p95_ms']:.2f} | "
-                f"{fmt_p_value(p_value)} | "
-                f"{fmt_ratio(latency_id)} |"
+                f"| {kb} KB | {rt} | "
+                f"{ps['mean_ms']:.2f} | {fmt_ci(ps['ci_low_ms'], ps['ci_high_ms'])} | "
+                f"{cs['mean_ms']:.2f} | {fmt_ci(cs['ci_low_ms'], cs['ci_high_ms'])} | "
+                f"{ps['p95_ms']:.2f} | {cs['p95_ms']:.2f} | "
+                f"{fmt_p(p)} | {fmt_ratio(cs['mean_ms'], ps['mean_ms'])} |"
             )
 
 
-def print_throughput_table(groups: dict[tuple[str, int, int], list[dict]]) -> None:
+def print_throughput_table(groups: dict) -> None:
+    print("\n## Concurrent Throughput Summary (N=1000 requests each cell)\n")
     if not groups:
-        print_markdown_heading("Concurrent Throughput Summary")
-        print("_No throughput_results.csv data found._")
+        print("_No valid throughput data (N=1000) found._")
         return
 
-    print_markdown_heading("Concurrent Throughput Summary")
     print(
-        "| Payload (KB) | Concurrency | Process Total Time (s) | "
-        "Process Throughput (req/s) | Container Total Time (s) | "
-        "Container Throughput (req/s) | Throughput ID (Process/Container) |"
+        "| Payload | Concurrency | Process Time (s) | Process (req/s) | "
+        "Container Time (s) | Container (req/s) | Throughput ID (P/C) |"
     )
     print("|---:|---:|---:|---:|---:|---:|---:|")
 
-    payload_sizes = sorted({payload_kb for (_, payload_kb, _) in groups})
-    concurrency_levels = sorted({level for (_, _, level) in groups})
+    payload_sizes = sorted({kb for (_, kb, _) in groups})
+    concurrency_levels = sorted({c for (_, _, c) in groups})
 
-    for payload_kb in payload_sizes:
-        for concurrency_level in concurrency_levels:
-            process_rows = groups.get(("process", payload_kb, concurrency_level), [])
-            container_rows = groups.get(("container", payload_kb, concurrency_level), [])
-            if not process_rows or not container_rows:
+    for kb in payload_sizes:
+        for c in concurrency_levels:
+            p_rows = groups.get(("process", kb, c), [])
+            c_rows = groups.get(("container", kb, c), [])
+            if not p_rows or not c_rows:
                 continue
-
-            process_total_time = statistics.mean(
-                float(row["total_time_s"]) for row in process_rows
-            )
-            process_tput = statistics.mean(
-                float(row["throughput_req_per_sec"]) for row in process_rows
-            )
-            container_total_time = statistics.mean(
-                float(row["total_time_s"]) for row in container_rows
-            )
-            container_tput = statistics.mean(
-                float(row["throughput_req_per_sec"]) for row in container_rows
-            )
-            throughput_id = isolation_delta(process_tput, container_tput)
-
+            p_time = statistics.mean(float(r["total_time_s"]) for r in p_rows)
+            p_tput = statistics.mean(float(r["throughput_req_per_sec"]) for r in p_rows)
+            c_time = statistics.mean(float(r["total_time_s"]) for r in c_rows)
+            c_tput = statistics.mean(float(r["throughput_req_per_sec"]) for r in c_rows)
             print(
-                f"| {payload_kb} | {concurrency_level} | "
-                f"{process_total_time:.3f} | {process_tput:.2f} | "
-                f"{container_total_time:.3f} | {container_tput:.2f} | "
-                f"{fmt_ratio(throughput_id)} |"
+                f"| {kb} KB | {c} | "
+                f"{p_time:.3f} | {p_tput:.2f} | "
+                f"{c_time:.3f} | {c_tput:.2f} | "
+                f"{fmt_ratio(p_tput, c_tput)} |"
             )
 
 
-def print_memory_table(memory_groups: dict[str, list[float]]) -> None:
-    print_markdown_heading("Memory Summary")
+def print_memory_section(memory_groups: dict) -> None:
+    print("\n## Memory\n")
 
-    process_values = memory_groups.get("process", [])
-    container_values = memory_groups.get("container", [])
-    if not process_values or not container_values:
-        print("_No complete process/container memory sample pair found in results/._")
+    p_vals = memory_groups.get("process", [])
+    c_vals = memory_groups.get("container", [])
+
+    if not p_vals and not c_vals:
+        print("_No memory CSV files found in results/._")
         return
 
-    process_stats = compute_memory_stats(process_values)
-    container_stats = compute_memory_stats(container_values)
-    mean_id = isolation_delta(container_stats["mean_mb"], process_stats["mean_mb"])
-    peak_id = isolation_delta(container_stats["peak_mb"], process_stats["peak_mb"])
+    if p_vals:
+        ps = compute_memory_stats(p_vals)
+        print(
+            f"**Process memory** (host RSS via psutil):  "
+            f"peak = {ps['peak_mb']:.2f} MB, mean = {ps['mean_mb']:.2f} MB  "
+            f"(n={ps['n']} samples)"
+        )
 
-    print(
-        "| Mode | Mean Memory (MB) | Mean 95% CI | Peak Memory (MB) | Stddev (MB) |"
-    )
-    print("|---|---:|---|---:|---:|")
-    print(
-        f"| Process | {process_stats['mean_mb']:.2f} | "
-        f"{fmt_ci(process_stats['ci_low_mb'], process_stats['ci_high_mb'])} | "
-        f"{process_stats['peak_mb']:.2f} | {process_stats['std_mb']:.2f} |"
-    )
-    print(
-        f"| Container (docker stats only) | {container_stats['mean_mb']:.2f} | "
-        f"{fmt_ci(container_stats['ci_low_mb'], container_stats['ci_high_mb'])} | "
-        f"{container_stats['peak_mb']:.2f} | {container_stats['std_mb']:.2f} |"
-    )
+    if c_vals:
+        cs = compute_memory_stats(c_vals)
+        print(
+            f"**Container memory** (docker stats, container-only):  "
+            f"peak = {cs['peak_mb']:.2f} MB, mean = {cs['mean_mb']:.2f} MB  "
+            f"(n={cs['n']} samples)"
+        )
 
-    print("\n| Memory Metric | Isolation Delta |")
-    print("|---|---:|")
-    print(f"| Mean Memory ID (Container/Process) | {fmt_ratio(mean_id)} |")
-    print(f"| Peak Memory ID (Container/Process) | {fmt_ratio(peak_id)} |")
+    # NO Isolation Delta for memory — the two instruments are incomparable.
+    # Process RSS is measured by psutil on the macOS host.
+    # Container memory is reported by docker stats inside the Linux VM cgroup.
+    # These measure different things at different abstraction layers.
     print(
-        f"| Host VM Correction Factor | ~{HOST_VM_CORRECTION_FACTOR_MB:.0f} MB additional host overhead |"
-    )
-    print(
-        f"| Note for paper | Container memory measured via docker stats "
-        f"({container_stats['mean_mb']:.2f} MB) excludes macOS "
-        f"com.docker.virtualization overhead (typically ~1.5GB). |"
+        "\n> **WARNING FOR PAPER:** These two values are NOT comparable and no "
+        "Isolation Delta should be reported for memory. Process memory is measured "
+        "via psutil RSS on the macOS host. Container memory is measured via "
+        "`docker stats` inside the Linux VM cgroup. The `com.docker.virtualization` "
+        "process on the macOS host consumes an additional ~1.5 GB that is entirely "
+        "excluded from the container figure. Reporting a ratio would be misleading."
     )
 
 
-def print_plaintext_findings(groups: dict[tuple[str, int, str], list[float]]) -> None:
-    print("\n### Statistical Findings")
-    for request_type in ("cold_start", "warm"):
-        print(f"\n{request_type}:")
-        payload_sizes = sorted({payload_kb for (_, payload_kb, rt) in groups if rt == request_type})
-        for payload_kb in payload_sizes:
-            process_values = groups.get(("process", payload_kb, request_type), [])
-            container_values = groups.get(("container", payload_kb, request_type), [])
-            if not process_values or not container_values:
+def print_plaintext_findings(groups: dict) -> None:
+    print("\n## Statistical Findings (inline text for paper)\n")
+    for rt in ("cold_start", "warm"):
+        print(f"**{rt}:**\n")
+        payload_sizes = sorted({kb for (_, kb, r) in groups if r == rt})
+        for kb in payload_sizes:
+            pv = groups.get(("process", kb, rt), [])
+            cv = groups.get(("container", kb, rt), [])
+            if not pv or not cv:
                 continue
-
-            process_stats = compute_stats(process_values)
-            container_stats = compute_stats(container_values)
-            p_value = welch_p_value(process_values, container_values)
-
+            ps = compute_stats(pv)
+            cs = compute_stats(cv)
+            p = welch_p_value(pv, cv)
+            sig = "p < 0.05 — significant" if (p is not None and p < 0.05) else "not significant"
             print(
-                f"- {payload_kb} KB: process mean {process_stats['mean_ms']:.2f} ms "
-                f"(95% CI {fmt_ci(process_stats['ci_low_ms'], process_stats['ci_high_ms'])}), "
-                f"container mean {container_stats['mean_ms']:.2f} ms "
-                f"(95% CI {fmt_ci(container_stats['ci_low_ms'], container_stats['ci_high_ms'])}), "
-                f"Welch p-value {fmt_p_value(p_value)}."
+                f"- **{kb} KB**: process mean {ps['mean_ms']:.2f} ms "
+                f"(95% CI {fmt_ci(ps['ci_low_ms'], ps['ci_high_ms'])}), "
+                f"container mean {cs['mean_ms']:.2f} ms "
+                f"(95% CI {fmt_ci(cs['ci_low_ms'], cs['ci_high_ms'])}), "
+                f"Welch p={fmt_p(p)} ({sig}), "
+                f"Isolation Delta = {fmt_ratio(cs['mean_ms'], ps['mean_ms'])}"
             )
+        print()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -354,47 +326,33 @@ def print_plaintext_findings(groups: dict[tuple[str, int, str], list[float]]) ->
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Analyze benchmark results")
-    parser.add_argument(
-        "--results",
-        type=Path,
-        default=DEFAULT_RESULTS,
-        help=f"Path to benchmark CSV (default: {DEFAULT_RESULTS})",
-    )
-    parser.add_argument(
-        "--throughput-results",
-        type=Path,
-        default=DEFAULT_THROUGHPUT_RESULTS,
-        help=f"Path to throughput CSV (default: {DEFAULT_THROUGHPUT_RESULTS})",
-    )
+    parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
+    parser.add_argument("--throughput-results", type=Path, default=DEFAULT_THROUGHPUT_RESULTS)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    latency_rows = load_results(args.results)
+    latency_rows = load_csv(args.results)
     throughput_rows = load_throughput_results(args.throughput_results)
     memory_groups = load_memory_groups()
 
     print(f"Loaded {len(latency_rows)} latency rows from {args.results}")
     if throughput_rows:
-        print(f"Loaded {len(throughput_rows)} throughput rows from {args.throughput_results}")
-    else:
-        print(f"No throughput rows found at {args.throughput_results}")
+        print(f"Loaded {len(throughput_rows)} throughput rows (N=1000) from {args.throughput_results}")
 
-    latest_memory = latest_memory_files()
-    if latest_memory:
-        print(
-            "Using latest memory files: "
-            + ", ".join(f"{mode}={path.name}" for mode, path in latest_memory.items())
-        )
+    mem_files = latest_memory_files()
+    if mem_files:
+        for mode, path in mem_files.items():
+            print(f"  memory [{mode}]: {path.name}")
 
     latency_groups = group_latencies(latency_rows)
     throughput_groups = group_throughput(throughput_rows)
 
     print_latency_tables(latency_groups)
     print_throughput_table(throughput_groups)
-    print_memory_table(memory_groups)
+    print_memory_section(memory_groups)
     print_plaintext_findings(latency_groups)
 
 

@@ -1,0 +1,48 @@
+{
+  "experiment": {
+    "workload": "ml",
+    "matrix_size": null,
+    "model_type": "LogisticRegression",
+    "timestamp": "2026-06-11T09:21:48Z",
+    "payload_sizes_kb": [
+      1,
+      10,
+      100,
+      1024
+    ]
+  },
+  "runs": [
+    {
+      "workload": "ml",
+      "payload_size_kb": 1,
+      "payload_size": "1KB",
+      "matrix_size": null,
+      "model_type": "LogisticRegression",
+      "timestamp": "2026-06-11T09:21:48Z"
+    },
+    {
+      "workload": "ml",
+      "payload_size_kb": 10,
+      "payload_size": "10KB",
+      "matrix_size": null,
+      "model_type": "LogisticRegression",
+      "timestamp": "2026-06-11T09:21:48Z"
+    },
+    {
+      "workload": "ml",
+      "payload_size_kb": 100,
+      "payload_size": "100KB",
+      "matrix_size": null,
+      "model_type": "LogisticRegression",
+      "timestamp": "2026-06-11T09:21:48Z"
+    },
+    {
+      "workload": "ml",
+      "payload_size_kb": 1024,
+      "payload_size": "1MB",
+      "matrix_size": null,
+      "model_type": "LogisticRegression",
+      "timestamp": "2026-06-11T09:21:48Z"
+    }
+  ]
+}

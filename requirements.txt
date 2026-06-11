@@ -19,5 +19,14 @@ psutil==5.9.8
 # and to avoid unrelated incompatibilities in mixed local Python environments.
 numpy<2.0
 
+# ML inference workload (also used by matrix workload in app.py)
+scikit-learn==1.4.2
+
 # Statistical analysis for p-values and confidence intervals
 scipy==1.13.0
+
+# Tabular result validation and notebook analysis
+pandas==2.2.2
+
+# Figure generation for the analysis notebook
+matplotlib==3.8.4

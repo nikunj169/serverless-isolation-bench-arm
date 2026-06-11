@@ -1,0 +1,5 @@
+workload,payload_size_kb,payload_size,matrix_size,model_type,timestamp
+ml,1,1KB,,LogisticRegression,2026-06-11T10:15:43Z
+ml,10,10KB,,LogisticRegression,2026-06-11T10:15:43Z
+ml,100,100KB,,LogisticRegression,2026-06-11T10:15:43Z
+ml,1024,1MB,,LogisticRegression,2026-06-11T10:15:43Z

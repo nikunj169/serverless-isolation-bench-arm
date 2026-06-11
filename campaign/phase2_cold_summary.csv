@@ -1,0 +1,9 @@
+workload,mode,mean_cold_start_ms,median_cold_start_ms
+sha256,process,1686.230,1759.021
+sha256,container,1365.253,1346.853
+json,process,1749.857,1761.199
+json,container,1292.889,1308.226
+matrix,process,2150.357,2245.696
+matrix,container,1843.345,1740.210
+ml,process,2102.267,2033.419
+ml,container,1341.263,1307.088

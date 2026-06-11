@@ -1,0 +1,10 @@
+{
+  "platform": "m1_dockerdesktop",
+  "cpu_model": "Apple M1",
+  "kernel": "24.6.0",
+  "docker_version": "Docker version 28.3.0, build 38b7060",
+  "python_version": "Python 3.14.3",
+  "ram_gb": "8",
+  "cpu_cores": "8",
+  "timestamp": "2026-06-11T09:03:03Z"
+}

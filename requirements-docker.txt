@@ -4,3 +4,5 @@
 # not inside the container running app.py.
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
+numpy<2.0
+scikit-learn==1.4.2

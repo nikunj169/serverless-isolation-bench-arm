@@ -1,0 +1,5 @@
+timestamp,mode,elapsed_s,memory_mb,measurement_scope
+2026-04-17T11:21:12.894,process,0.01,8.16,host_process_tree_rss
+2026-04-17T11:21:13.905,process,1.03,31.81,host_process_tree_rss
+2026-04-17T11:21:15.062,process,2.18,35.89,host_process_tree_rss
+2026-04-17T11:21:16.096,process,3.22,43.62,host_process_tree_rss

@@ -1,0 +1,5 @@
+workload,payload_size_kb,payload_size,matrix_size,model_type,timestamp
+json,1,1KB,,,2026-06-11T09:34:08Z
+json,10,10KB,,,2026-06-11T09:34:08Z
+json,100,100KB,,,2026-06-11T09:34:08Z
+json,1024,1MB,,,2026-06-11T09:34:08Z

@@ -1,0 +1,13 @@
+timestamp,mode,elapsed_s,memory_mb,measurement_scope
+2026-04-19T13:41:32.576,container,1.56,30.33,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:35.127,container,4.11,30.03,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:37.680,container,6.66,30.03,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:40.258,container,9.24,30.03,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:43.246,container,12.23,30.02,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:45.803,container,14.79,30.02,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:48.392,container,17.38,30.02,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:50.937,container,19.92,30.02,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:53.952,container,22.94,30.02,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:56.541,container,25.52,30.02,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:41:59.092,container,28.08,30.02,docker_stats_container_only_excludes_host_vm
+2026-04-19T13:42:01.691,container,30.67,30.02,docker_stats_container_only_excludes_host_vm

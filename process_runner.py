@@ -12,7 +12,7 @@ import requests
 
 # How long to wait (seconds) for the server to become ready before giving up
 STARTUP_TIMEOUT = 15
-HEALTH_POLL_INTERVAL = 0.2
+HEALTH_POLL_INTERVAL = 0.05
 
 
 class ProcessRunner:
@@ -107,10 +107,14 @@ class ProcessRunner:
         Raises RuntimeError on timeout so the benchmark fails fast.
         """
         deadline = time.monotonic() + STARTUP_TIMEOUT
+        t_start = time.monotonic()
         while time.monotonic() < deadline:
             try:
                 r = requests.get(f"{self.url}/health", timeout=1)
                 if r.status_code == 200:
+                    startup_ms = (time.monotonic() - t_start) * 1000
+                    # Print so we can verify the true startup baseline
+                    print(f"    [process_runner] ready in {startup_ms:.1f}ms", flush=True)
                     return
             except requests.exceptions.ConnectionError:
                 pass
@@ -118,10 +122,7 @@ class ProcessRunner:
 
         # Timeout — clean up before raising
         self.stop()
-        raise RuntimeError(
-            f"Process server did not become ready within {STARTUP_TIMEOUT}s "
-            f"on port {self.port}"
-        )
+        raise RuntimeError(f"Process server did not become ready within {STARTUP_TIMEOUT}s")
 
     @property
     def pid(self) -> int | None:

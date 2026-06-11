@@ -1,0 +1,48 @@
+{
+  "experiment": {
+    "workload": "sha256",
+    "matrix_size": null,
+    "model_type": null,
+    "timestamp": "2026-06-11T08:53:24Z",
+    "payload_sizes_kb": [
+      1,
+      10,
+      100,
+      1024
+    ]
+  },
+  "runs": [
+    {
+      "workload": "sha256",
+      "payload_size_kb": 1,
+      "payload_size": "1KB",
+      "matrix_size": null,
+      "model_type": null,
+      "timestamp": "2026-06-11T08:53:24Z"
+    },
+    {
+      "workload": "sha256",
+      "payload_size_kb": 10,
+      "payload_size": "10KB",
+      "matrix_size": null,
+      "model_type": null,
+      "timestamp": "2026-06-11T08:53:24Z"
+    },
+    {
+      "workload": "sha256",
+      "payload_size_kb": 100,
+      "payload_size": "100KB",
+      "matrix_size": null,
+      "model_type": null,
+      "timestamp": "2026-06-11T08:53:24Z"
+    },
+    {
+      "workload": "sha256",
+      "payload_size_kb": 1024,
+      "payload_size": "1MB",
+      "matrix_size": null,
+      "model_type": null,
+      "timestamp": "2026-06-11T08:53:24Z"
+    }
+  ]
+}

@@ -1,33 +1,39 @@
 """
 app.py — Minimal FastAPI function simulating a serverless handler.
-Receives a JSON payload, computes SHA256 hash, returns the result.
+
+Dispatches POST /compute to the workload selected by the WORKLOAD environment
+variable (sha256, json, matrix, ml).
 """
 
-import hashlib
-import json
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-app = FastAPI()
+from workloads import get_workload
+from workloads.base import Workload
+
+_workload: Workload | None = None
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global _workload
+    _workload = get_workload()
+    _workload.startup()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/compute")
 async def compute(request: Request):
-    """
-    Core FaaS-style handler.
-    Accepts arbitrary JSON payload, returns SHA256 hash of the raw body.
-    """
+    """Core FaaS-style handler."""
     body = await request.body()
-    digest = hashlib.sha256(body).hexdigest()
-    payload_size = len(body)
-    return JSONResponse(
-        content={
-            "sha256": digest,
-            "payload_bytes": payload_size,
-        }
-    )
+    result = _workload.compute(body)
+    return JSONResponse(content=result)
 
 
 @app.get("/health")
